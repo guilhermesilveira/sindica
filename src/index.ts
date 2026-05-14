@@ -13,6 +13,7 @@ export type {
   ConflictPolicy,
   Issue,
   IssueLabels,
+  LabelConfig,
   Pipeline,
   Provider,
   ProviderName,

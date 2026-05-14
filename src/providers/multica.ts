@@ -1,7 +1,15 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createLabels } from "../core/labels.js";
-import type { Action, ActionPlan, AgentConfig, Issue, Pipeline, Provider } from "../core/types.js";
+import type {
+  Action,
+  ActionPlan,
+  AgentConfig,
+  Issue,
+  LabelConfig,
+  Pipeline,
+  Provider,
+} from "../core/types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -116,6 +124,7 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
       }
     },
     async deploy(pipeline: Pipeline) {
+      await deployLabels(workspaceId, pipeline);
       await deployAgents(workspaceId, pipeline);
       await deployRouter(workspaceId, pipeline);
     },
@@ -124,6 +133,46 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
       console.log(stdout.trim());
     },
   };
+}
+
+async function deployLabels(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
+  const labelConfigs = normalizeLabelConfigs(pipeline.labels ?? []);
+  if (labelConfigs.length === 0) {
+    return;
+  }
+
+  const existing = new Map(await listLabels(workspaceId));
+
+  for (const labelConfig of labelConfigs) {
+    if (existing.has(labelConfig.name)) {
+      console.log(`label already exists: ${labelConfig.name}`);
+      continue;
+    }
+
+    await multica(
+      workspaceId,
+      "label",
+      "create",
+      "--name",
+      labelConfig.name,
+      "--color",
+      labelConfig.color ?? "#64748b",
+      "--output",
+      "json"
+    );
+    existing.set(labelConfig.name, labelConfig.name);
+    console.log(`created label: ${labelConfig.name}`);
+  }
+}
+
+function normalizeLabelConfigs(labels: readonly (string | LabelConfig)[]): LabelConfig[] {
+  return labels.map((label) => {
+    if (typeof label === "string") {
+      return { name: label };
+    }
+
+    return label;
+  });
 }
 
 async function deployAgents(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {

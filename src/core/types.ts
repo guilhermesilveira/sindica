@@ -46,6 +46,11 @@ export interface AgentConfig {
   visibility?: "private" | "workspace";
 }
 
+export interface LabelConfig {
+  name: string;
+  color?: string;
+}
+
 export interface Pipeline {
   name: string;
   router: {
@@ -62,6 +67,7 @@ export interface Pipeline {
     triggerLabel?: string;
   };
   agents?: readonly AgentConfig[];
+  labels?: readonly (string | LabelConfig)[];
   conflictPolicy: ConflictPolicy;
   rules: readonly Rule[];
 }

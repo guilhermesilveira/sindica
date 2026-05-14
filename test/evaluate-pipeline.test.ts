@@ -104,6 +104,32 @@ describe("evaluatePipeline", () => {
     expect(plan.conflicts).toHaveLength(0);
     expect(plan.planned[0]?.rule.id).toBe("first");
   });
+
+  test("keeps declared labels for provider deployment", () => {
+    const pipeline = definePipeline({
+      name: "test",
+      router: {
+        name: "Test Router",
+        schedule: "* * * * *",
+        timezone: "UTC",
+      },
+      labels: ["phase:triage", { name: "blocked:human-help", color: "#dc2626" }],
+      conflictPolicy: "fail",
+      rules: [
+        {
+          id: "triage",
+          priority: 10,
+          match: (issue) => issue.open,
+          actions: [addLabel("phase:triage")],
+        },
+      ],
+    });
+
+    expect(pipeline.labels).toEqual([
+      "phase:triage",
+      { name: "blocked:human-help", color: "#dc2626" },
+    ]);
+  });
 });
 
 function fakeIssue(overrides: Partial<Issue>): Issue {

@@ -14,6 +14,11 @@ export default definePipeline({
     schedule: "* * * * *",
     timezone: "UTC",
   },
+  labels: [
+    "phase:triage",
+    "phase:ready",
+    { name: "blocked:human-help", color: "#dc2626" },
+  ],
   conflictPolicy: "fail",
   rules: [
     {
