@@ -35,6 +35,11 @@ interface MulticaLabel {
   name: string;
 }
 
+interface MulticaSkill {
+  id: string;
+  name: string;
+}
+
 interface MulticaRuntime {
   id: string;
   provider?: string;
@@ -124,6 +129,7 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
 async function deployAgents(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
   for (const agentConfig of pipeline.agents ?? []) {
     const agent = await deployAgent(workspaceId, agentConfig);
+    await setAgentSkills(workspaceId, agent.id, agentConfig.skills ?? []);
     console.log(`deployed agent: ${agent.name} (${agent.id})`);
   }
 }
@@ -155,6 +161,7 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
     routerAgentConfig.customArgs = pipeline.router.customArgs;
   }
   const agent = await deployAgent(workspaceId, routerAgentConfig);
+  await setAgentSkills(workspaceId, agent.id, []);
   const autopilot = await upsertAutopilot(workspaceId, {
     title: pipeline.router.name,
     description: [
@@ -174,6 +181,38 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
   console.log(`deployed agent: ${agent.name} (${agent.id})`);
   console.log(`deployed autopilot: ${autopilot.title} (${autopilot.id})`);
   console.log(`deployed trigger: ${triggerLabel} ${pipeline.router.schedule} ${pipeline.router.timezone}`);
+}
+
+async function setAgentSkills(
+  workspaceId: string | undefined,
+  agentId: string,
+  skillNames: readonly string[]
+): Promise<void> {
+  if (skillNames.length === 0) {
+    await multica(workspaceId, "agent", "skills", "set", agentId, "--skill-ids", "", "--output", "json");
+    return;
+  }
+
+  const skills = await multicaJson<MulticaSkill[]>(workspaceId, "skill", "list", "--output", "json");
+  const skillIds = skillNames.map((name) => {
+    const skill = skills.find((candidate) => candidate.name === name);
+    if (!skill) {
+      throw new Error(`Multica skill not found for agent ${agentId}: ${name}`);
+    }
+    return skill.id;
+  });
+
+  await multica(
+    workspaceId,
+    "agent",
+    "skills",
+    "set",
+    agentId,
+    "--skill-ids",
+    skillIds.join(","),
+    "--output",
+    "json"
+  );
 }
 
 async function deployAgent(

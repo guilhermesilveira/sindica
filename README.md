@@ -14,7 +14,7 @@ sindica deploy examples/basic.sindica.ts --provider multica
 
 - `plan`: load the TypeScript config, validate provider setup, fetch issues, evaluate rules, and print the actions without changing anything.
 - `run`: do the same validation as `plan`, then apply the planned actions.
-- `deploy`: create or update the provider-side router/autopilot infrastructure.
+- `deploy`: create or update declared agents, assign their skills, and create or update the provider-side router/autopilot infrastructure.
 - `doctor`: check provider connectivity and config loading.
 
 ## Config
@@ -30,7 +30,23 @@ export default definePipeline({
     name: "Example Pipeline Router",
     schedule: "* * * * *",
     timezone: "UTC",
+    runtimeProvider: "codex",
+    customArgs: [
+      "-c",
+      'sandbox_mode="danger-full-access"',
+      "-c",
+      'approval_policy="never"',
+    ],
   },
+  agents: [
+    {
+      name: "Refiner",
+      description: "Refines fresh issues.",
+      instructions: "Execute the refine skill for the issue assigned to you.",
+      runtimeProvider: "codex",
+      skills: ["refine-issue"],
+    },
+  ],
   conflictPolicy: "fail",
   rules: [
     {
@@ -46,3 +62,13 @@ export default definePipeline({
   ],
 });
 ```
+
+For the Multica provider, `deploy` is an upsert:
+
+- agents are created when missing and updated when names already exist;
+- `skills` are resolved by name and assigned to each agent;
+- the router agent is created or updated;
+- the router autopilot is created or updated in `run_only` mode;
+- the schedule trigger is created or updated.
+
+If a declared skill name does not exist in the Multica workspace, deployment fails instead of silently creating an agent with missing capabilities.

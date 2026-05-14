@@ -38,6 +38,7 @@ export interface AgentConfig {
   name: string;
   description?: string;
   instructions: string;
+  skills?: readonly string[];
   model?: string;
   runtimeProvider?: string;
   customArgs?: readonly string[];

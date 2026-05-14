@@ -41,6 +41,7 @@ export function createMulticaProvider(options = {}) {
 async function deployAgents(workspaceId, pipeline) {
     for (const agentConfig of pipeline.agents ?? []) {
         const agent = await deployAgent(workspaceId, agentConfig);
+        await setAgentSkills(workspaceId, agent.id, agentConfig.skills ?? []);
         console.log(`deployed agent: ${agent.name} (${agent.id})`);
     }
 }
@@ -71,6 +72,7 @@ async function deployRouter(workspaceId, pipeline) {
         routerAgentConfig.customArgs = pipeline.router.customArgs;
     }
     const agent = await deployAgent(workspaceId, routerAgentConfig);
+    await setAgentSkills(workspaceId, agent.id, []);
     const autopilot = await upsertAutopilot(workspaceId, {
         title: pipeline.router.name,
         description: [
@@ -88,6 +90,21 @@ async function deployRouter(workspaceId, pipeline) {
     console.log(`deployed agent: ${agent.name} (${agent.id})`);
     console.log(`deployed autopilot: ${autopilot.title} (${autopilot.id})`);
     console.log(`deployed trigger: ${triggerLabel} ${pipeline.router.schedule} ${pipeline.router.timezone}`);
+}
+async function setAgentSkills(workspaceId, agentId, skillNames) {
+    if (skillNames.length === 0) {
+        await multica(workspaceId, "agent", "skills", "set", agentId, "--skill-ids", "", "--output", "json");
+        return;
+    }
+    const skills = await multicaJson(workspaceId, "skill", "list", "--output", "json");
+    const skillIds = skillNames.map((name) => {
+        const skill = skills.find((candidate) => candidate.name === name);
+        if (!skill) {
+            throw new Error(`Multica skill not found for agent ${agentId}: ${name}`);
+        }
+        return skill.id;
+    });
+    await multica(workspaceId, "agent", "skills", "set", agentId, "--skill-ids", skillIds.join(","), "--output", "json");
 }
 async function deployAgent(workspaceId, agentConfig) {
     const runtimeProvider = agentConfig.runtimeProvider ?? "codex";
