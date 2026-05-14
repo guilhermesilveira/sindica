@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { createLabels } from "../core/labels.js";
 const execFileAsync = promisify(execFile);
@@ -30,6 +31,7 @@ export function createMulticaProvider(options = {}) {
         },
         async deploy(pipeline) {
             await deployLabels(workspaceId, pipeline);
+            await deploySkills(workspaceId, pipeline);
             await deployAgents(workspaceId, pipeline);
             await deployRouter(workspaceId, pipeline);
         },
@@ -62,6 +64,35 @@ function normalizeLabelConfigs(labels) {
         }
         return label;
     });
+}
+async function deploySkills(workspaceId, pipeline) {
+    for (const skillConfig of pipeline.skills ?? []) {
+        const skill = await upsertSkill(workspaceId, skillConfig);
+        await upsertSkillFiles(workspaceId, skill.id, skillConfig.files ?? []);
+        console.log(`deployed skill: ${skill.name} (${skill.id})`);
+    }
+}
+async function upsertSkill(workspaceId, skillConfig) {
+    const skills = await multicaJson(workspaceId, "skill", "list", "--output", "json");
+    const existing = skills.find((skill) => skill.name === skillConfig.name);
+    const content = await readFile(skillConfig.contentPath, "utf8");
+    const description = skillConfig.description ?? skillConfig.name;
+    if (existing) {
+        return multicaJson(workspaceId, "skill", "update", existing.id, "--name", skillConfig.name, "--description", description, "--content", content, ...skillConfigArgs(skillConfig), "--output", "json");
+    }
+    return multicaJson(workspaceId, "skill", "create", "--name", skillConfig.name, "--description", description, "--content", content, ...skillConfigArgs(skillConfig), "--output", "json");
+}
+function skillConfigArgs(skillConfig) {
+    if (!skillConfig.config) {
+        return [];
+    }
+    return ["--config", skillConfig.config];
+}
+async function upsertSkillFiles(workspaceId, skillId, filePaths) {
+    for (const filePath of filePaths) {
+        const content = await readFile(filePath, "utf8");
+        await multica(workspaceId, "skill", "files", "upsert", skillId, "--path", filePath, "--content", content, "--output", "json");
+    }
 }
 async function deployAgents(workspaceId, pipeline) {
     for (const agentConfig of pipeline.agents ?? []) {

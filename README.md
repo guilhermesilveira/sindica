@@ -51,6 +51,14 @@ export default definePipeline({
     "phase:triage",
     { name: "blocked:human-help", color: "#dc2626" },
   ],
+  skills: [
+    {
+      name: "refine-issue",
+      description: "Refines fresh issues.",
+      contentPath: ".claude/skills/refine-issue/SKILL.md",
+      files: [".claude/commands/refine-issue.md"],
+    },
+  ],
   conflictPolicy: "fail",
   rules: [
     {
@@ -70,6 +78,7 @@ export default definePipeline({
 For the Multica provider, `deploy` is an upsert:
 
 - `labels` are created when missing;
+- `skills` are created or updated from declared local files before agents are deployed;
 - agents are created when missing and updated when names already exist;
 - `skills` are resolved by name and assigned to each agent;
 - the router agent is created or updated;

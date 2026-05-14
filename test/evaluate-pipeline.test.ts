@@ -130,6 +130,43 @@ describe("evaluatePipeline", () => {
       { name: "blocked:human-help", color: "#dc2626" },
     ]);
   });
+
+  test("keeps declared skills for provider deployment", () => {
+    const pipeline = definePipeline({
+      name: "test",
+      router: {
+        name: "Test Router",
+        schedule: "* * * * *",
+        timezone: "UTC",
+      },
+      skills: [
+        {
+          name: "refine-issue",
+          description: "Refines issues.",
+          contentPath: ".claude/skills/refine-issue/SKILL.md",
+          files: [".claude/commands/refine-issue.md"],
+        },
+      ],
+      conflictPolicy: "fail",
+      rules: [
+        {
+          id: "triage",
+          priority: 10,
+          match: (issue) => issue.open,
+          actions: [addLabel("phase:triage")],
+        },
+      ],
+    });
+
+    expect(pipeline.skills).toEqual([
+      {
+        name: "refine-issue",
+        description: "Refines issues.",
+        contentPath: ".claude/skills/refine-issue/SKILL.md",
+        files: [".claude/commands/refine-issue.md"],
+      },
+    ]);
+  });
 });
 
 function fakeIssue(overrides: Partial<Issue>): Issue {

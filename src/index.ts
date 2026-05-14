@@ -18,4 +18,5 @@ export type {
   Provider,
   ProviderName,
   Rule,
+  SkillConfig,
 } from "./core/types.js";

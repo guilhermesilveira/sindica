@@ -53,6 +53,13 @@ export interface LabelConfig {
     name: string;
     color?: string;
 }
+export interface SkillConfig {
+    name: string;
+    description?: string;
+    contentPath: string;
+    files?: readonly string[];
+    config?: string;
+}
 export interface Pipeline {
     name: string;
     router: {
@@ -68,6 +75,7 @@ export interface Pipeline {
         runtimeProvider?: string;
         triggerLabel?: string;
     };
+    skills?: readonly SkillConfig[];
     agents?: readonly AgentConfig[];
     labels?: readonly (string | LabelConfig)[];
     conflictPolicy: ConflictPolicy;

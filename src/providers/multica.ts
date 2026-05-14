@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { createLabels } from "../core/labels.js";
 import type {
@@ -9,6 +10,7 @@ import type {
   LabelConfig,
   Pipeline,
   Provider,
+  SkillConfig,
 } from "../core/types.js";
 
 const execFileAsync = promisify(execFile);
@@ -125,6 +127,7 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
     },
     async deploy(pipeline: Pipeline) {
       await deployLabels(workspaceId, pipeline);
+      await deploySkills(workspaceId, pipeline);
       await deployAgents(workspaceId, pipeline);
       await deployRouter(workspaceId, pipeline);
     },
@@ -173,6 +176,88 @@ function normalizeLabelConfigs(labels: readonly (string | LabelConfig)[]): Label
 
     return label;
   });
+}
+
+async function deploySkills(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
+  for (const skillConfig of pipeline.skills ?? []) {
+    const skill = await upsertSkill(workspaceId, skillConfig);
+    await upsertSkillFiles(workspaceId, skill.id, skillConfig.files ?? []);
+    console.log(`deployed skill: ${skill.name} (${skill.id})`);
+  }
+}
+
+async function upsertSkill(
+  workspaceId: string | undefined,
+  skillConfig: SkillConfig
+): Promise<MulticaSkill> {
+  const skills = await multicaJson<MulticaSkill[]>(workspaceId, "skill", "list", "--output", "json");
+  const existing = skills.find((skill) => skill.name === skillConfig.name);
+  const content = await readFile(skillConfig.contentPath, "utf8");
+  const description = skillConfig.description ?? skillConfig.name;
+
+  if (existing) {
+    return multicaJson<MulticaSkill>(
+      workspaceId,
+      "skill",
+      "update",
+      existing.id,
+      "--name",
+      skillConfig.name,
+      "--description",
+      description,
+      "--content",
+      content,
+      ...skillConfigArgs(skillConfig),
+      "--output",
+      "json"
+    );
+  }
+
+  return multicaJson<MulticaSkill>(
+    workspaceId,
+    "skill",
+    "create",
+    "--name",
+    skillConfig.name,
+    "--description",
+    description,
+    "--content",
+    content,
+    ...skillConfigArgs(skillConfig),
+    "--output",
+    "json"
+  );
+}
+
+function skillConfigArgs(skillConfig: SkillConfig): string[] {
+  if (!skillConfig.config) {
+    return [];
+  }
+
+  return ["--config", skillConfig.config];
+}
+
+async function upsertSkillFiles(
+  workspaceId: string | undefined,
+  skillId: string,
+  filePaths: readonly string[]
+): Promise<void> {
+  for (const filePath of filePaths) {
+    const content = await readFile(filePath, "utf8");
+    await multica(
+      workspaceId,
+      "skill",
+      "files",
+      "upsert",
+      skillId,
+      "--path",
+      filePath,
+      "--content",
+      content,
+      "--output",
+      "json"
+    );
+  }
 }
 
 async function deployAgents(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
