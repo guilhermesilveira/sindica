@@ -134,7 +134,7 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
   ].join("\n");
   const model = pipeline.router.model ?? "gpt-5.5";
   const triggerLabel = pipeline.router.triggerLabel ?? "sindica-router";
-  const runtimeId = await resolveRuntimeId(workspaceId);
+  const runtimeId = await resolveRuntimeId(workspaceId, pipeline.router.runtimeProvider ?? "claude");
   const agent = await upsertAgent(workspaceId, {
     name: agentName,
     description,
@@ -163,12 +163,17 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
   console.log(`deployed trigger: ${triggerLabel} ${pipeline.router.schedule} ${pipeline.router.timezone}`);
 }
 
-async function resolveRuntimeId(workspaceId: string | undefined): Promise<string> {
+async function resolveRuntimeId(
+  workspaceId: string | undefined,
+  preferredProvider: string
+): Promise<string> {
   const runtimes = await multicaJson<MulticaRuntime[]>(workspaceId, "runtime", "list", "--output", "json");
-  const onlineCodex = runtimes.find((runtime) => runtime.status === "online" && runtime.provider === "codex");
+  const preferred = runtimes.find(
+    (runtime) => runtime.status === "online" && runtime.provider === preferredProvider
+  );
   const online = runtimes.find((runtime) => runtime.status === "online");
   const fallback = runtimes[0];
-  const runtime = onlineCodex ?? online ?? fallback;
+  const runtime = preferred ?? online ?? fallback;
 
   if (!runtime) {
     throw new Error("No Multica runtime found for router agent deployment.");

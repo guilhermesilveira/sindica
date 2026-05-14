@@ -45,6 +45,7 @@ export interface Pipeline {
     description?: string;
     instructions?: string;
     model?: string;
+    runtimeProvider?: string;
     triggerLabel?: string;
   };
   conflictPolicy: ConflictPolicy;
