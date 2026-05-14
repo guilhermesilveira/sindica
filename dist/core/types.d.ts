@@ -38,6 +38,16 @@ export interface Rule {
     match(issue: Issue): boolean;
     actions: readonly Action[];
 }
+export interface AgentConfig {
+    name: string;
+    description?: string;
+    instructions: string;
+    model?: string;
+    runtimeProvider?: string;
+    customArgs?: readonly string[];
+    maxConcurrentTasks?: number;
+    visibility?: "private" | "workspace";
+}
 export interface Pipeline {
     name: string;
     router: {
@@ -53,6 +63,7 @@ export interface Pipeline {
         runtimeProvider?: string;
         triggerLabel?: string;
     };
+    agents?: readonly AgentConfig[];
     conflictPolicy: ConflictPolicy;
     rules: readonly Rule[];
 }

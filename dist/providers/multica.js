@@ -29,6 +29,7 @@ export function createMulticaProvider(options = {}) {
             }
         },
         async deploy(pipeline) {
+            await deployAgents(workspaceId, pipeline);
             await deployRouter(workspaceId, pipeline);
         },
         async doctor() {
@@ -36,6 +37,12 @@ export function createMulticaProvider(options = {}) {
             console.log(stdout.trim());
         },
     };
+}
+async function deployAgents(workspaceId, pipeline) {
+    for (const agentConfig of pipeline.agents ?? []) {
+        const agent = await deployAgent(workspaceId, agentConfig);
+        console.log(`deployed agent: ${agent.name} (${agent.id})`);
+    }
 }
 async function deployRouter(workspaceId, pipeline) {
     const agentName = pipeline.router.agentName ?? pipeline.router.name;
@@ -51,17 +58,19 @@ async function deployRouter(workspaceId, pipeline) {
     ].join("\n");
     const model = pipeline.router.model ?? "gpt-5.5";
     const triggerLabel = pipeline.router.triggerLabel ?? "sindica-router";
-    const runtimeProvider = pipeline.router.runtimeProvider ?? "codex";
-    const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
-    const customArgs = pipeline.router.customArgs ?? defaultCustomArgs(runtimeProvider);
-    const agent = await upsertAgent(workspaceId, {
+    const routerAgentConfig = {
         name: agentName,
         description,
         instructions,
         model,
-        runtimeId,
-        customArgs,
-    });
+        runtimeProvider: pipeline.router.runtimeProvider ?? "codex",
+        maxConcurrentTasks: 1,
+        visibility: "private",
+    };
+    if (pipeline.router.customArgs) {
+        routerAgentConfig.customArgs = pipeline.router.customArgs;
+    }
+    const agent = await deployAgent(workspaceId, routerAgentConfig);
     const autopilot = await upsertAutopilot(workspaceId, {
         title: pipeline.router.name,
         description: [
@@ -80,6 +89,21 @@ async function deployRouter(workspaceId, pipeline) {
     console.log(`deployed autopilot: ${autopilot.title} (${autopilot.id})`);
     console.log(`deployed trigger: ${triggerLabel} ${pipeline.router.schedule} ${pipeline.router.timezone}`);
 }
+async function deployAgent(workspaceId, agentConfig) {
+    const runtimeProvider = agentConfig.runtimeProvider ?? "codex";
+    const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
+    const customArgs = agentConfig.customArgs ?? defaultCustomArgs(runtimeProvider);
+    return upsertAgent(workspaceId, {
+        name: agentConfig.name,
+        description: agentConfig.description ?? "",
+        instructions: agentConfig.instructions,
+        model: agentConfig.model ?? "gpt-5.5",
+        runtimeId,
+        customArgs,
+        maxConcurrentTasks: agentConfig.maxConcurrentTasks ?? 6,
+        visibility: agentConfig.visibility ?? "private",
+    });
+}
 async function resolveRuntimeId(workspaceId, preferredProvider) {
     const runtimes = await multicaJson(workspaceId, "runtime", "list", "--output", "json");
     const preferred = runtimes.find((runtime) => runtime.status === "online" && runtime.provider === preferredProvider);
@@ -95,10 +119,10 @@ async function upsertAgent(workspaceId, input) {
     const agents = await multicaJson(workspaceId, "agent", "list", "--output", "json");
     const existing = agents.find((agent) => agent.name === input.name);
     if (existing) {
-        const updated = await multicaJson(workspaceId, "agent", "update", existing.id, "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, "--custom-args", JSON.stringify(input.customArgs), "--visibility", "private", "--max-concurrent-tasks", "1", "--output", "json");
+        const updated = await multicaJson(workspaceId, "agent", "update", existing.id, "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, "--custom-args", JSON.stringify(input.customArgs), "--visibility", input.visibility, "--max-concurrent-tasks", String(input.maxConcurrentTasks), "--output", "json");
         return updated;
     }
-    return multicaJson(workspaceId, "agent", "create", "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, "--custom-args", JSON.stringify(input.customArgs), "--visibility", "private", "--max-concurrent-tasks", "1", "--output", "json");
+    return multicaJson(workspaceId, "agent", "create", "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, "--custom-args", JSON.stringify(input.customArgs), "--visibility", input.visibility, "--max-concurrent-tasks", String(input.maxConcurrentTasks), "--output", "json");
 }
 function defaultCustomArgs(runtimeProvider) {
     if (runtimeProvider !== "codex") {

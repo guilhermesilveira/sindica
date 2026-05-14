@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createLabels } from "../core/labels.js";
-import type { Action, ActionPlan, Issue, Pipeline, Provider } from "../core/types.js";
+import type { Action, ActionPlan, AgentConfig, Issue, Pipeline, Provider } from "../core/types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -111,6 +111,7 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
       }
     },
     async deploy(pipeline: Pipeline) {
+      await deployAgents(workspaceId, pipeline);
       await deployRouter(workspaceId, pipeline);
     },
     async doctor() {
@@ -118,6 +119,13 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
       console.log(stdout.trim());
     },
   };
+}
+
+async function deployAgents(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
+  for (const agentConfig of pipeline.agents ?? []) {
+    const agent = await deployAgent(workspaceId, agentConfig);
+    console.log(`deployed agent: ${agent.name} (${agent.id})`);
+  }
 }
 
 async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
@@ -134,17 +142,19 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
   ].join("\n");
   const model = pipeline.router.model ?? "gpt-5.5";
   const triggerLabel = pipeline.router.triggerLabel ?? "sindica-router";
-  const runtimeProvider = pipeline.router.runtimeProvider ?? "codex";
-  const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
-  const customArgs = pipeline.router.customArgs ?? defaultCustomArgs(runtimeProvider);
-  const agent = await upsertAgent(workspaceId, {
+  const routerAgentConfig: AgentConfig = {
     name: agentName,
     description,
     instructions,
     model,
-    runtimeId,
-    customArgs,
-  });
+    runtimeProvider: pipeline.router.runtimeProvider ?? "codex",
+    maxConcurrentTasks: 1,
+    visibility: "private",
+  };
+  if (pipeline.router.customArgs) {
+    routerAgentConfig.customArgs = pipeline.router.customArgs;
+  }
+  const agent = await deployAgent(workspaceId, routerAgentConfig);
   const autopilot = await upsertAutopilot(workspaceId, {
     title: pipeline.router.name,
     description: [
@@ -164,6 +174,26 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
   console.log(`deployed agent: ${agent.name} (${agent.id})`);
   console.log(`deployed autopilot: ${autopilot.title} (${autopilot.id})`);
   console.log(`deployed trigger: ${triggerLabel} ${pipeline.router.schedule} ${pipeline.router.timezone}`);
+}
+
+async function deployAgent(
+  workspaceId: string | undefined,
+  agentConfig: AgentConfig
+): Promise<MulticaAgent> {
+  const runtimeProvider = agentConfig.runtimeProvider ?? "codex";
+  const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
+  const customArgs = agentConfig.customArgs ?? defaultCustomArgs(runtimeProvider);
+
+  return upsertAgent(workspaceId, {
+    name: agentConfig.name,
+    description: agentConfig.description ?? "",
+    instructions: agentConfig.instructions,
+    model: agentConfig.model ?? "gpt-5.5",
+    runtimeId,
+    customArgs,
+    maxConcurrentTasks: agentConfig.maxConcurrentTasks ?? 6,
+    visibility: agentConfig.visibility ?? "private",
+  });
 }
 
 async function resolveRuntimeId(
@@ -194,6 +224,8 @@ async function upsertAgent(
     model: string;
     runtimeId: string;
     customArgs: readonly string[];
+    maxConcurrentTasks: number;
+    visibility: "private" | "workspace";
   }
 ): Promise<MulticaAgent> {
   const agents = await multicaJson<MulticaAgent[]>(workspaceId, "agent", "list", "--output", "json");
@@ -218,9 +250,9 @@ async function upsertAgent(
       "--custom-args",
       JSON.stringify(input.customArgs),
       "--visibility",
-      "private",
+      input.visibility,
       "--max-concurrent-tasks",
-      "1",
+      String(input.maxConcurrentTasks),
       "--output",
       "json"
     );
@@ -244,9 +276,9 @@ async function upsertAgent(
     "--custom-args",
     JSON.stringify(input.customArgs),
     "--visibility",
-    "private",
+    input.visibility,
     "--max-concurrent-tasks",
-    "1",
+    String(input.maxConcurrentTasks),
     "--output",
     "json"
   );
