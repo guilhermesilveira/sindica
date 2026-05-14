@@ -15,7 +15,9 @@ export function createProvider(options: ProviderOptions): Provider {
   }
 
   if (options.provider === "multica") {
-    return createMulticaProvider();
+    return process.env.MULTICA_WORKSPACE_ID
+      ? createMulticaProvider({ workspaceId: process.env.MULTICA_WORKSPACE_ID })
+      : createMulticaProvider();
   }
 
   throw new Error(`Unknown provider: ${options.provider}`);
