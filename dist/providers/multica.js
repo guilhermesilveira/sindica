@@ -124,6 +124,9 @@ async function deployRouter(workspaceId, pipeline) {
         maxConcurrentTasks: 1,
         visibility: "private",
     };
+    if (pipeline.router.thinkingLevel) {
+        routerAgentConfig.thinkingLevel = pipeline.router.thinkingLevel;
+    }
     if (pipeline.router.customArgs) {
         routerAgentConfig.customArgs = pipeline.router.customArgs;
     }
@@ -166,7 +169,7 @@ async function deployAgent(workspaceId, agentConfig) {
     const runtimeProvider = agentConfig.runtimeProvider ?? "codex";
     const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
     const customArgs = agentConfig.customArgs ?? defaultCustomArgs(runtimeProvider);
-    return upsertAgent(workspaceId, {
+    const input = {
         name: agentConfig.name,
         description: agentConfig.description ?? "",
         instructions: agentConfig.instructions,
@@ -175,7 +178,18 @@ async function deployAgent(workspaceId, agentConfig) {
         customArgs,
         maxConcurrentTasks: agentConfig.maxConcurrentTasks ?? 6,
         visibility: agentConfig.visibility ?? "private",
-    });
+    };
+    const config = runtimeConfig(agentConfig.thinkingLevel);
+    if (config) {
+        input.runtimeConfig = config;
+    }
+    return upsertAgent(workspaceId, input);
+}
+function runtimeConfig(thinkingLevel) {
+    if (!thinkingLevel) {
+        return undefined;
+    }
+    return JSON.stringify({ thinking_level: thinkingLevel });
 }
 async function resolveRuntimeId(workspaceId, preferredProvider) {
     const runtimes = await multicaJson(workspaceId, "runtime", "list", "--output", "json");
@@ -192,10 +206,16 @@ async function upsertAgent(workspaceId, input) {
     const agents = await multicaJson(workspaceId, "agent", "list", "--output", "json");
     const existing = agents.find((agent) => agent.name === input.name);
     if (existing) {
-        const updated = await multicaJson(workspaceId, "agent", "update", existing.id, "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, "--custom-args", JSON.stringify(input.customArgs), "--visibility", input.visibility, "--max-concurrent-tasks", String(input.maxConcurrentTasks), "--output", "json");
+        const updated = await multicaJson(workspaceId, "agent", "update", existing.id, "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, ...runtimeConfigArgs(input.runtimeConfig), "--custom-args", JSON.stringify(input.customArgs), "--visibility", input.visibility, "--max-concurrent-tasks", String(input.maxConcurrentTasks), "--output", "json");
         return updated;
     }
-    return multicaJson(workspaceId, "agent", "create", "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, "--custom-args", JSON.stringify(input.customArgs), "--visibility", input.visibility, "--max-concurrent-tasks", String(input.maxConcurrentTasks), "--output", "json");
+    return multicaJson(workspaceId, "agent", "create", "--name", input.name, "--description", input.description, "--instructions", input.instructions, "--model", input.model, "--runtime-id", input.runtimeId, ...runtimeConfigArgs(input.runtimeConfig), "--custom-args", JSON.stringify(input.customArgs), "--visibility", input.visibility, "--max-concurrent-tasks", String(input.maxConcurrentTasks), "--output", "json");
+}
+function runtimeConfigArgs(runtimeConfig) {
+    if (!runtimeConfig) {
+        return [];
+    }
+    return ["--runtime-config", runtimeConfig];
 }
 function defaultCustomArgs(runtimeProvider) {
     if (runtimeProvider !== "codex") {

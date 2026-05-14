@@ -16,6 +16,8 @@ describe("evaluatePipeline", () => {
         name: "Test Router",
         schedule: "* * * * *",
         timezone: "UTC",
+        model: "gpt-5.5",
+        thinkingLevel: "medium",
       },
       conflictPolicy: "fail",
       rules: [
@@ -49,6 +51,8 @@ describe("evaluatePipeline", () => {
         name: "Test Router",
         schedule: "* * * * *",
         timezone: "UTC",
+        model: "gpt-5.5",
+        thinkingLevel: "medium",
       },
       conflictPolicy: "fail",
       rules: [
@@ -138,6 +142,8 @@ describe("evaluatePipeline", () => {
         name: "Test Router",
         schedule: "* * * * *",
         timezone: "UTC",
+        model: "gpt-5.5",
+        thinkingLevel: "medium",
       },
       skills: [
         {
@@ -166,6 +172,8 @@ describe("evaluatePipeline", () => {
         files: [".claude/commands/refine-issue.md"],
       },
     ]);
+    expect(pipeline.router.model).toBe("gpt-5.5");
+    expect(pipeline.router.thinkingLevel).toBe("medium");
   });
 });
 

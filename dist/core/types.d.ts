@@ -44,6 +44,7 @@ export interface AgentConfig {
     instructions: string;
     skills?: readonly string[];
     model?: string;
+    thinkingLevel?: string;
     runtimeProvider?: string;
     customArgs?: readonly string[];
     maxConcurrentTasks?: number;
@@ -72,6 +73,7 @@ export interface Pipeline {
         description?: string;
         instructions?: string;
         model?: string;
+        thinkingLevel?: string;
         runtimeProvider?: string;
         triggerLabel?: string;
     };

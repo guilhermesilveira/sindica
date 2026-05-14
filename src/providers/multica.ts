@@ -291,6 +291,9 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
     maxConcurrentTasks: 1,
     visibility: "private",
   };
+  if (pipeline.router.thinkingLevel) {
+    routerAgentConfig.thinkingLevel = pipeline.router.thinkingLevel;
+  }
   if (pipeline.router.customArgs) {
     routerAgentConfig.customArgs = pipeline.router.customArgs;
   }
@@ -357,7 +360,17 @@ async function deployAgent(
   const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
   const customArgs = agentConfig.customArgs ?? defaultCustomArgs(runtimeProvider);
 
-  return upsertAgent(workspaceId, {
+  const input: {
+    name: string;
+    description: string;
+    instructions: string;
+    model: string;
+    runtimeConfig?: string;
+    runtimeId: string;
+    customArgs: readonly string[];
+    maxConcurrentTasks: number;
+    visibility: "private" | "workspace";
+  } = {
     name: agentConfig.name,
     description: agentConfig.description ?? "",
     instructions: agentConfig.instructions,
@@ -366,7 +379,21 @@ async function deployAgent(
     customArgs,
     maxConcurrentTasks: agentConfig.maxConcurrentTasks ?? 6,
     visibility: agentConfig.visibility ?? "private",
-  });
+  };
+  const config = runtimeConfig(agentConfig.thinkingLevel);
+  if (config) {
+    input.runtimeConfig = config;
+  }
+
+  return upsertAgent(workspaceId, input);
+}
+
+function runtimeConfig(thinkingLevel: string | undefined): string | undefined {
+  if (!thinkingLevel) {
+    return undefined;
+  }
+
+  return JSON.stringify({ thinking_level: thinkingLevel });
 }
 
 async function resolveRuntimeId(
@@ -395,6 +422,7 @@ async function upsertAgent(
     description: string;
     instructions: string;
     model: string;
+    runtimeConfig?: string;
     runtimeId: string;
     customArgs: readonly string[];
     maxConcurrentTasks: number;
@@ -420,6 +448,7 @@ async function upsertAgent(
       input.model,
       "--runtime-id",
       input.runtimeId,
+      ...runtimeConfigArgs(input.runtimeConfig),
       "--custom-args",
       JSON.stringify(input.customArgs),
       "--visibility",
@@ -446,6 +475,7 @@ async function upsertAgent(
     input.model,
     "--runtime-id",
     input.runtimeId,
+    ...runtimeConfigArgs(input.runtimeConfig),
     "--custom-args",
     JSON.stringify(input.customArgs),
     "--visibility",
@@ -455,6 +485,14 @@ async function upsertAgent(
     "--output",
     "json"
   );
+}
+
+function runtimeConfigArgs(runtimeConfig: string | undefined): string[] {
+  if (!runtimeConfig) {
+    return [];
+  }
+
+  return ["--runtime-config", runtimeConfig];
 }
 
 function defaultCustomArgs(runtimeProvider: string): readonly string[] {

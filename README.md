@@ -30,6 +30,8 @@ export default definePipeline({
     name: "Example Pipeline Router",
     schedule: "* * * * *",
     timezone: "UTC",
+    model: "gpt-5.5",
+    thinkingLevel: "medium",
     runtimeProvider: "codex",
     customArgs: [
       "-c",
@@ -44,6 +46,8 @@ export default definePipeline({
       description: "Refines fresh issues.",
       instructions: "Execute the refine skill for the issue assigned to you.",
       runtimeProvider: "codex",
+      model: "gpt-5.5",
+      thinkingLevel: "medium",
       skills: ["refine-issue"],
     },
   ],
