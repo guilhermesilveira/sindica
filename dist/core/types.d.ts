@@ -44,6 +44,12 @@ export interface Pipeline {
         name: string;
         schedule: string;
         timezone: string;
+        agentName?: string;
+        command?: string;
+        description?: string;
+        instructions?: string;
+        model?: string;
+        triggerLabel?: string;
     };
     conflictPolicy: ConflictPolicy;
     rules: readonly Rule[];

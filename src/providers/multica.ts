@@ -35,6 +35,38 @@ interface MulticaLabel {
   name: string;
 }
 
+interface MulticaRuntime {
+  id: string;
+  provider?: string;
+  status?: string;
+}
+
+interface MulticaAgent {
+  id: string;
+  name: string;
+}
+
+interface MulticaAutopilotListResponse {
+  autopilots: MulticaAutopilot[];
+}
+
+interface MulticaAutopilot {
+  id: string;
+  title: string;
+  status: string;
+}
+
+interface MulticaAutopilotGetResponse {
+  autopilot: MulticaAutopilot;
+  triggers?: MulticaTrigger[];
+}
+
+interface MulticaTrigger {
+  id: string;
+  label?: string | null;
+  cron_expression?: string | null;
+}
+
 export function createMulticaProvider(options: MulticaProviderOptions = {}): Provider {
   const workspaceId = options.workspaceId;
 
@@ -79,16 +111,242 @@ export function createMulticaProvider(options: MulticaProviderOptions = {}): Pro
       }
     },
     async deploy(pipeline: Pipeline) {
-      await execFileAsync("multica", ["--version"]);
-      console.log(
-        `multica provider detected. Router upsert is not implemented yet: ${pipeline.router.name}`
-      );
+      await deployRouter(workspaceId, pipeline);
     },
     async doctor() {
       const { stdout } = await execFileAsync("multica", ["--version"]);
       console.log(stdout.trim());
     },
   };
+}
+
+async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline): Promise<void> {
+  const agentName = pipeline.router.agentName ?? pipeline.router.name;
+  const command = pipeline.router.command ?? "sindica-run run";
+  const description = pipeline.router.description ??
+    `Runs the Sindica deterministic router for pipeline ${pipeline.name}.`;
+  const instructions = pipeline.router.instructions ?? [
+    "Execute the configured Sindica router command exactly once:",
+    "",
+    `  ${command}`,
+    "",
+    "Report the command result. Do not manually move issues outside Sindica.",
+  ].join("\n");
+  const model = pipeline.router.model ?? "gpt-5.5";
+  const triggerLabel = pipeline.router.triggerLabel ?? "sindica-router";
+  const runtimeId = await resolveRuntimeId(workspaceId);
+  const agent = await upsertAgent(workspaceId, {
+    name: agentName,
+    description,
+    instructions,
+    model,
+    runtimeId,
+  });
+  const autopilot = await upsertAutopilot(workspaceId, {
+    title: pipeline.router.name,
+    description: [
+      "Run the Sindica deterministic issue router.",
+      "",
+      `Command: ${command}`,
+    ].join("\n"),
+    agentName,
+  });
+
+  await upsertTrigger(workspaceId, autopilot.id, {
+    label: triggerLabel,
+    cron: pipeline.router.schedule,
+    timezone: pipeline.router.timezone,
+  });
+
+  console.log(`deployed agent: ${agent.name} (${agent.id})`);
+  console.log(`deployed autopilot: ${autopilot.title} (${autopilot.id})`);
+  console.log(`deployed trigger: ${triggerLabel} ${pipeline.router.schedule} ${pipeline.router.timezone}`);
+}
+
+async function resolveRuntimeId(workspaceId: string | undefined): Promise<string> {
+  const runtimes = await multicaJson<MulticaRuntime[]>(workspaceId, "runtime", "list", "--output", "json");
+  const onlineCodex = runtimes.find((runtime) => runtime.status === "online" && runtime.provider === "codex");
+  const online = runtimes.find((runtime) => runtime.status === "online");
+  const fallback = runtimes[0];
+  const runtime = onlineCodex ?? online ?? fallback;
+
+  if (!runtime) {
+    throw new Error("No Multica runtime found for router agent deployment.");
+  }
+
+  return runtime.id;
+}
+
+async function upsertAgent(
+  workspaceId: string | undefined,
+  input: {
+    name: string;
+    description: string;
+    instructions: string;
+    model: string;
+    runtimeId: string;
+  }
+): Promise<MulticaAgent> {
+  const agents = await multicaJson<MulticaAgent[]>(workspaceId, "agent", "list", "--output", "json");
+  const existing = agents.find((agent) => agent.name === input.name);
+
+  if (existing) {
+    const updated = await multicaJson<MulticaAgent>(
+      workspaceId,
+      "agent",
+      "update",
+      existing.id,
+      "--name",
+      input.name,
+      "--description",
+      input.description,
+      "--instructions",
+      input.instructions,
+      "--model",
+      input.model,
+      "--runtime-id",
+      input.runtimeId,
+      "--visibility",
+      "private",
+      "--max-concurrent-tasks",
+      "1",
+      "--output",
+      "json"
+    );
+    return updated;
+  }
+
+  return multicaJson<MulticaAgent>(
+    workspaceId,
+    "agent",
+    "create",
+    "--name",
+    input.name,
+    "--description",
+    input.description,
+    "--instructions",
+    input.instructions,
+    "--model",
+    input.model,
+    "--runtime-id",
+    input.runtimeId,
+    "--visibility",
+    "private",
+    "--max-concurrent-tasks",
+    "1",
+    "--output",
+    "json"
+  );
+}
+
+async function upsertAutopilot(
+  workspaceId: string | undefined,
+  input: {
+    title: string;
+    description: string;
+    agentName: string;
+  }
+): Promise<MulticaAutopilot> {
+  const autopilots = await multicaJson<MulticaAutopilotListResponse>(
+    workspaceId,
+    "autopilot",
+    "list",
+    "--output",
+    "json"
+  );
+  const existing = autopilots.autopilots.find((autopilot) => autopilot.title === input.title);
+
+  if (existing) {
+    return multicaJson<MulticaAutopilot>(
+      workspaceId,
+      "autopilot",
+      "update",
+      existing.id,
+      "--title",
+      input.title,
+      "--description",
+      input.description,
+      "--agent",
+      input.agentName,
+      "--mode",
+      "run_only",
+      "--status",
+      "active",
+      "--output",
+      "json"
+    );
+  }
+
+  return multicaJson<MulticaAutopilot>(
+    workspaceId,
+    "autopilot",
+    "create",
+    "--title",
+    input.title,
+    "--description",
+    input.description,
+    "--agent",
+    input.agentName,
+    "--mode",
+    "run_only",
+    "--output",
+    "json"
+  );
+}
+
+async function upsertTrigger(
+  workspaceId: string | undefined,
+  autopilotId: string,
+  input: {
+    label: string;
+    cron: string;
+    timezone: string;
+  }
+): Promise<void> {
+  const current = await multicaJson<MulticaAutopilotGetResponse>(
+    workspaceId,
+    "autopilot",
+    "get",
+    autopilotId,
+    "--output",
+    "json"
+  );
+  const existing = current.triggers?.find((trigger) => trigger.label === input.label);
+
+  if (existing) {
+    await multica(
+      workspaceId,
+      "autopilot",
+      "trigger-update",
+      autopilotId,
+      existing.id,
+      "--label",
+      input.label,
+      "--cron",
+      input.cron,
+      "--timezone",
+      input.timezone,
+      "--enabled=true",
+      "--output",
+      "json"
+    );
+    return;
+  }
+
+  await multica(
+    workspaceId,
+    "autopilot",
+    "trigger-add",
+    autopilotId,
+    "--label",
+    input.label,
+    "--cron",
+    input.cron,
+    "--timezone",
+    input.timezone,
+    "--output",
+    "json"
+  );
 }
 
 function toIssue(issue: MulticaIssue): Issue {
