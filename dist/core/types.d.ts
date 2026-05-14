@@ -46,6 +46,7 @@ export interface Pipeline {
         timezone: string;
         agentName?: string;
         command?: string;
+        customArgs?: readonly string[];
         description?: string;
         instructions?: string;
         model?: string;

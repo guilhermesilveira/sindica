@@ -134,13 +134,16 @@ async function deployRouter(workspaceId: string | undefined, pipeline: Pipeline)
   ].join("\n");
   const model = pipeline.router.model ?? "gpt-5.5";
   const triggerLabel = pipeline.router.triggerLabel ?? "sindica-router";
-  const runtimeId = await resolveRuntimeId(workspaceId, pipeline.router.runtimeProvider ?? "claude");
+  const runtimeProvider = pipeline.router.runtimeProvider ?? "codex";
+  const runtimeId = await resolveRuntimeId(workspaceId, runtimeProvider);
+  const customArgs = pipeline.router.customArgs ?? defaultCustomArgs(runtimeProvider);
   const agent = await upsertAgent(workspaceId, {
     name: agentName,
     description,
     instructions,
     model,
     runtimeId,
+    customArgs,
   });
   const autopilot = await upsertAutopilot(workspaceId, {
     title: pipeline.router.name,
@@ -190,6 +193,7 @@ async function upsertAgent(
     instructions: string;
     model: string;
     runtimeId: string;
+    customArgs: readonly string[];
   }
 ): Promise<MulticaAgent> {
   const agents = await multicaJson<MulticaAgent[]>(workspaceId, "agent", "list", "--output", "json");
@@ -211,6 +215,8 @@ async function upsertAgent(
       input.model,
       "--runtime-id",
       input.runtimeId,
+      "--custom-args",
+      JSON.stringify(input.customArgs),
       "--visibility",
       "private",
       "--max-concurrent-tasks",
@@ -235,6 +241,8 @@ async function upsertAgent(
     input.model,
     "--runtime-id",
     input.runtimeId,
+    "--custom-args",
+    JSON.stringify(input.customArgs),
     "--visibility",
     "private",
     "--max-concurrent-tasks",
@@ -242,6 +250,19 @@ async function upsertAgent(
     "--output",
     "json"
   );
+}
+
+function defaultCustomArgs(runtimeProvider: string): readonly string[] {
+  if (runtimeProvider !== "codex") {
+    return [];
+  }
+
+  return [
+    "-c",
+    'sandbox_mode="danger-full-access"',
+    "-c",
+    'approval_policy="never"',
+  ];
 }
 
 async function upsertAutopilot(
